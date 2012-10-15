@@ -1,0 +1,7 @@
+[run]
+branch = True
+source = txscrypt
+
+[report]
+exclude_lines =
+    pragma: no cover
