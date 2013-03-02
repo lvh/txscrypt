@@ -52,6 +52,39 @@ class VerifyPasswordTests(unittest.TestCase):
 
 
 
+class CheckPasswordTests(unittest.TestCase):
+    """
+    Tests for ``checkPassword``.
+    """
+    @defer.inlineCallbacks
+    def setUp(self):
+        self.computed = yield w.computeKey("password", maxTime=0.0001)
+
+
+    def _checkPassword(self, password):
+        """
+        Checks the provided password against the precomputed key.
+        """
+        return w.checkPassword(self.computed, password)
+
+
+    def test_success(self):
+        """
+        Tests that when the provided password is right, the deferred fires
+        with ``True``.
+        """
+        return self._checkPassword("password").addCallback(self.assertTrue)
+
+
+    def test_failure(self):
+        """
+        Tests that when the provided password is wrong, the deferred fires
+        with ``False``.
+        """
+        return self._checkPassword("BOGUS").addCallback(self.assertFalse)
+
+
+
 class ComputeKeyTests(unittest.TestCase):
     """
     Tests for computing a new key from a password.

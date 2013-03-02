@@ -38,6 +38,28 @@ def verifyPassword(stored, provided):
     return d.addCallbacks(_swallowResult, _scryptErrback)
 
 
+def checkPassword(stored, provided):
+    """
+    Checks that the stored key was computed from the provided password.
+    """
+    d = threads.deferToThread(scrypt.decrypt, stored, provided)
+
+    def _swallowResult(_result):
+        """
+        Swallows the result (the original nonce), returns ``True``.
+        """
+        return True
+
+    def _scryptErrback(failure):
+        """
+        Catches scrypt errors and returns ``False``.
+        """
+        failure.trap(scrypt.error)
+        return False
+
+    return d.addCallbacks(_swallowResult, _scryptErrback)
+
+
 def computeKey(password, nonceLength=NONCE_LENGTH, maxTime=MAX_TIME):
     """
     Computes a key from the password using a secure key derivation function.
