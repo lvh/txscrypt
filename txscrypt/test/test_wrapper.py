@@ -65,8 +65,14 @@ class ComputeKeyTests(unittest.TestCase):
 
 
     def test_defaults(self):
+        """
+        Tests the default values ``computeKey`` gets called with.
+        """
         return self._test_computeKey()
 
 
     def test_differentParameters(self):
+        """
+        Tests that the default values for ``computeKey`` can be overridden.
+        """
         return self._test_computeKey(object(), object())

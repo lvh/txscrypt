@@ -16,12 +16,15 @@ def verifyPassword(stored, provided):
     """
     Verifies that the stored derived key was computed from the provided
     password.
+
+    Returns a deferred that will either be fired with ``None`` or fail with
+    ``twisted.cred.error.UnauthorizedLogin``.
     """
     d = threads.deferToThread(scrypt.decrypt, stored, provided)
 
     def _swallowResult(_result):
         """
-        Swallows the result (the original nonce).
+        Swallows the result (the original nonce), returns ``None``.
         """
         return None
 
