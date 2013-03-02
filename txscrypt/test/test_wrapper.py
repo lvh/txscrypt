@@ -3,6 +3,7 @@ Tests for the scrypt wrapper.
 """
 import mock
 import scrypt
+import warnings
 
 from twisted.cred import error
 from twisted.internet import defer
@@ -53,6 +54,16 @@ class VerifyPasswordTests(_PasswordTestCase):
         self.assertFailure(d, error.UnauthorizedLogin)
         return d
 
+
+    def test_deprecated(self):
+        with warnings.catch_warnings(record=True) as c:
+            self._verifyPassword("password")
+            self.assertEqual(len(c), 1)
+            self.assertEqual(c[-1].category, DeprecationWarning)
+
+            message = str(c[-1].message)
+            self.assertIn("deprecated", message)
+            self.assertIn("checkPassword", message)
 
 
 class CheckPasswordTests(_PasswordTestCase):

@@ -3,6 +3,7 @@ Wrapper around scrypt.
 """
 import os
 import scrypt
+import warnings
 
 from twisted.cred import error
 from twisted.internet import threads
@@ -19,7 +20,11 @@ def verifyPassword(stored, provided):
 
     Returns a deferred that will either be fired with ``None`` or fail with
     ``twisted.cred.error.UnauthorizedLogin``.
+
+    This function has been deprecated in favor of ``checkPassword``.
     """
+    warnings.warn("verifyPassword has been deprecated, use checkPassword",
+                  DeprecationWarning, stacklevel=2)
     d = threads.deferToThread(scrypt.decrypt, stored, provided)
 
     def _swallowResult(_result):
