@@ -41,6 +41,9 @@ def verifyPassword(stored, provided):
 def checkPassword(stored, provided):
     """
     Checks that the stored key was computed from the provided password.
+
+    Returns a deferred that will fire with ``True`` (if the password was
+    correct) or ``False`` otherwise.
     """
     d = threads.deferToThread(scrypt.decrypt, stored, provided)
 
