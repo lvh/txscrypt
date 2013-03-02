@@ -14,53 +14,51 @@ from txscrypt import wrapper as w
 _deferToThread = "twisted.internet.threads.deferToThread"
 
 
-class VerifyPasswordTests(unittest.TestCase):
+class _PasswordTestCase(unittest.TestCase):
     """
-    Tests for verifying a stored key matches a given password.
-    """
-    def _test_verifyPassword(self, returnValue, stored, provided):
-        """
-        Generic password verifying test.
-        """
-        with mock.patch(_deferToThread) as m:
-            m.return_value = returnValue
-            d = w.verifyPassword(stored, provided)
-            m.assert_called_once_with(scrypt.decrypt, stored, provided)
-
-        return d
-
-
-    def test_success(self):
-        """
-        Tests the happy case of verifying a password.
-        """
-        returnValue, stored, provided = defer.succeed(""), "a", "a"
-        d = self._test_verifyPassword(returnValue, stored, provided)
-        return d.addCallback(self.assertIdentical, None)
-
-
-    def test_failure(self):
-        """
-        Failing test for verifying a password.
-
-        This could be because the password was wrong, or because it took too
-        long to decrypt.
-        """
-        returnValue, stored, provided = defer.fail(scrypt.error()), "a", "b"
-        d = self._test_verifyPassword(returnValue, stored, provided)
-        return self.assertFailure(d, error.UnauthorizedLogin)
-
-
-
-class CheckPasswordTests(unittest.TestCase):
-    """
-    Tests for ``checkPassword``.
+    A test case that precomputes a key from a password.
     """
     @defer.inlineCallbacks
     def setUp(self):
         self.computed = yield w.computeKey("password", maxTime=0.0001)
 
 
+
+class VerifyPasswordTests(_PasswordTestCase):
+    """
+    Tests for verifying a stored key matches a given password.
+    """
+    def _verifyPassword(self, password):
+        """
+        Verifies a password
+        """
+        return w.verifyPassword(self.computed, password)
+
+
+    def test_success(self):
+        """
+        Tests that ``verifyPassword`` returns ``None`` if the password was
+        correct.
+        """
+        d = self._verifyPassword("password")
+        return d.addCallback(self.assertIdentical, None)
+
+
+    def test_failure(self):
+        """
+        Tests that ``verifyPassword`` returns a deferred that fails with
+        ``error.UnauthorizedLogin`` if the password was wrong.
+        """
+        d = self._verifyPassword("BOGUS")
+        self.assertFailure(d, error.UnauthorizedLogin)
+        return d
+
+
+
+class CheckPasswordTests(_PasswordTestCase):
+    """
+    Tests for ``checkPassword``.
+    """
     def _checkPassword(self, password):
         """
         Checks the provided password against the precomputed key.
