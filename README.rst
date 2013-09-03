@@ -10,3 +10,4 @@
 
 .. image:: https://dl.dropbox.com/u/38476311/Logos/txscrypt.png
     :align: center
+    :width: 300px
