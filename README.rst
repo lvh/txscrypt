@@ -47,19 +47,6 @@ treatment you gave the password before you passed it to
 You get a deferred. At some point in the future, it will fire with
 either ``True`` if the password matched or ``False`` if it didn't.
 
-But what about salts?
-=====================
-
-txscrypt takes care of this for you.
-
-But what about timing attacks?
-==============================
-
-txscrypt takes care of this for you.
-
-(That is, unless there are side channels related to multiple
-executions of ``scrypt`` on the same machine.)
-
 Why is the magical string base64-encoded?
 =========================================
 
@@ -72,6 +59,40 @@ Earlier versions of txscrypt used the raw bytes produced by scrypt.
 Some third party tools bit off those strings after the first NUL byte.
 Unluckily, this was immediately after the word "scrypt", which were
 the first bytes of that string.
+
+But what about salts?
+=====================
+
+txscrypt takes care of this for you.
+
+(It computes a salt of sufficient length using your OS'
+cryptographically secure random number generator.)
+
+But what about timing attacks?
+==============================
+
+txscrypt takes care of this for you.
+
+(That is, unless there are side channels related to multiple
+executions of ``scrypt`` on the same machine.)
+
+But what about starving the thread pool?
+========================================
+
+txscrypt takes care of this for you.
+
+(It creates a new thread pool just for running scrypt in.)
+
+When should I create my own Wrapper object?
+===========================================
+
+If you want to change:
+
+- the maximum computation time
+- the salt length
+- the thread pool
+
+So, basically, never.
 
 Changelog
 =========
