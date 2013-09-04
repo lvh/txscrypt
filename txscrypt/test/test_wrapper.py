@@ -2,18 +2,18 @@
 Tests for the scrypt wrapper.
 """
 import scrypt
-from twisted.internet import reactor
 from twisted.trial import unittest
 from txscrypt import wrapper as w
 
 
 class WrapperTests(unittest.TestCase):
     def setUp(self):
-        self.reactor = object()
+        self.reactor = _FakeReactor()
         self.threadPool = _FakeThreadPool()
         self.saltLength, self.maxTime = 3141, 5926
         self.wrapper = w.Wrapper(self.reactor, self.threadPool,
                                  self.saltLength, self.maxTime)
+        self.wrapper.urandom = self._urandom
 
 
     def _urandom(self, n):
@@ -45,9 +45,11 @@ class WrapperTests(unittest.TestCase):
         self.assertEqual(result, expected)
 
         self.assertEqual(self.threadPool.f, scrypt.encrypt)
-        expectedArgs = ["RANDOM_BYTES", "THE_PASSWORD", self.wrapper.maxTime]
+        expectedArgs = "RANDOM_BYTES", "THE_PASSWORD", self.wrapper.maxTime
         self.assertEqual(self.threadPool.args, expectedArgs)
         self.assertEqual(self.threadPool.kwargs, {})
+
+        self.assertEqual(self.randomBytesRequested, self.wrapper.saltLength)
 
 
     def test_checkValidPassword(self):
@@ -63,7 +65,7 @@ class WrapperTests(unittest.TestCase):
         self.assertTrue(self.successResultOf(d))
 
         self.assertEqual(self.threadPool.f, scrypt.decrypt)
-        expectedArgs = ["STORED_PASSWORD", "REAL_PASSWORD"]
+        expectedArgs = "STORED_PASSWORD", "REAL_PASSWORD"
         self.assertEqual(self.threadPool.args, expectedArgs)
         self.assertEqual(self.threadPool.kwargs, {})
 
@@ -81,7 +83,7 @@ class WrapperTests(unittest.TestCase):
         self.assertFalse(self.successResultOf(d))
 
         self.assertEqual(self.threadPool.f, scrypt.decrypt)
-        expectedArgs = ["STORED_PASSWORD", "FAKE_PASSWORD"]
+        expectedArgs = "STORED_PASSWORD", "FAKE_PASSWORD"
         self.assertEqual(self.threadPool.args, expectedArgs)
         self.assertEqual(self.threadPool.kwargs, {})
 
@@ -103,6 +105,18 @@ class _FakeThreadPool(object):
     def callInThreadWithCallback(self, onResult, f, *args, **kwargs):
         self.f, self.args, self.kwargs = f, args, kwargs
         onResult(self.success, self.result)
+
+
+
+class _FakeReactor(object):
+    """
+    A fake reactor that pretends to be able to be called from a thread.
+    """
+    def callFromThread(self, f, *a, **kw):
+        """
+        Just call the function in this thread.
+        """
+        f(*a, **kw)
 
 
 
