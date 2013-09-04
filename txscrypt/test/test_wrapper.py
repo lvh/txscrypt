@@ -1,120 +1,148 @@
 """
 Tests for the scrypt wrapper.
 """
-import mock
 import scrypt
-import warnings
-
-from twisted.cred import error
-from twisted.internet import defer
+from twisted.internet import reactor
 from twisted.trial import unittest
-
 from txscrypt import wrapper as w
 
-
-_deferToThread = "twisted.internet.threads.deferToThread"
-
-
-class _PasswordTestCase(unittest.TestCase):
-    """
-    A test case that precomputes a key from a password.
-    """
-    @defer.inlineCallbacks
+class WrapperTests(unittest.TestCase):
     def setUp(self):
-        self.computed = yield w.computeKey("password", maxTime=0.0001)
+        self.reactor = object()
+        self.threadPool = _FakeThreadPool()
+        self.saltLength, self.maxTime = 3141, 5926
+        self.wrapper = w.Wrapper(self.reactor, self.threadPool,
+                                 self.saltLength, self.maxTime)
+
+
+    def _urandom(self, n):
+        self.randomBytesRequested = n
+        return "RANDOM_BYTES" # YOLO
+
+
+    def test_parameters(self):
+        """
+        The wrapper has the parameters it was given as attributes.
+        """
+        self.assertEqual(self.wrapper.reactor, self.reactor)
+        self.assertEqual(self.wrapper.threadPool, self.threadPool)
+        self.assertEqual(self.wrapper.saltLength, self.saltLength)
+        self.assertEqual(self.wrapper.maxTime, self.maxTime)
+
+
+    def test_computeKey(self):
+        """
+        Computing a key works. The result is base64 encoded.
+        """
+        self.threadPool.success = True
+        self.threadPool.result = "STORED_PASSWORD"
+
+        d = self.wrapper.computeKey("THE_PASSWORD")
+        result = self.successResultOf(d)
+
+        expected = "STORED_PASSWORD".encode("base64").strip()
+        self.assertEqual(result, expected)
+
+        self.assertEqual(self.threadPool.f, scrypt.encrypt)
+        expectedArgs = ["RANDOM_BYTES", "THE_PASSWORD", self.wrapper.maxTime]
+        self.assertEqual(self.threadPool.args, expectedArgs)
+        self.assertEqual(self.threadPool.kwargs, {})
+
+
+    def test_checkValidPassword(self):
+        """
+        Checking a valid password provides a deferred that fires with
+        True.
+        """
+        self.threadPool.success = True
+        self.threadPool.result = "THE_SALT"
+
+        stored = "STORED_PASSWORD".encode("base64").strip()
+        d = self.wrapper.checkPassword(stored, "REAL_PASSWORD")
+        self.assertTrue(self.successResultOf(d))
+
+        self.assertEqual(self.threadPool.f, scrypt.decrypt)
+        expectedArgs = ["STORED_PASSWORD", "REAL_PASSWORD"]
+        self.assertEqual(self.threadPool.args, expectedArgs)
+        self.assertEqual(self.threadPool.kwargs, {})
+
+
+    def test_checkInvalidPassword(self):
+        """
+        Checking an invalid password provides a deferred that fires with
+        False.
+        """
+        self.threadPool.success = False
+        self.threadPool.result = scrypt.error()
+
+        stored = "STORED_PASSWORD".encode("base64").strip()
+        d = self.wrapper.checkPassword(stored, "FAKE_PASSWORD")
+        self.assertFalse(self.successResultOf(d))
+
+        self.assertEqual(self.threadPool.f, scrypt.decrypt)
+        expectedArgs = ["STORED_PASSWORD", "FAKE_PASSWORD"]
+        self.assertEqual(self.threadPool.args, expectedArgs)
+        self.assertEqual(self.threadPool.kwargs, {})
 
 
 
-class VerifyPasswordTests(_PasswordTestCase):
+class _FakeThreadPool(object):
+    """Fake thread pool for testing purposes.
+
+    A fake thread pool that pretends to let you call things in a
+    thread with a callback. It remembers what it was called with, and
+    calls the callback synchronously.
+
     """
-    Tests for verifying a stored key matches a given password.
+    def __init__(self):
+        self.success = True
+        self.result = None
+
+
+    def callInThreadWithCallback(self, onResult, f, *args, **kwargs):
+        self.f, self.args, self.kwargs = f, args, kwargs
+        onResult((self.success, self.result))
+
+
+
+class DefaultParameterTests(unittest.TestCase):
     """
-    def _verifyPassword(self, password):
-        """
-        Verifies a password
-        """
-        return w.verifyPassword(self.computed, password)
-
-
-    def test_success(self):
-        """
-        Tests that ``verifyPassword`` returns ``None`` if the password was
-        correct.
-        """
-        d = self._verifyPassword("password")
-        return d.addCallback(self.assertIdentical, None)
-
-
-    def test_failure(self):
-        """
-        Tests that ``verifyPassword`` returns a deferred that fails with
-        ``error.UnauthorizedLogin`` if the password was wrong.
-        """
-        d = self._verifyPassword("BOGUS")
-        self.assertFailure(d, error.UnauthorizedLogin)
-        return d
-
-
-    def test_deprecated(self):
-        with warnings.catch_warnings(record=True) as c:
-            self._verifyPassword("password")
-            self.assertEqual(len(c), 1)
-            self.assertEqual(c[-1].category, DeprecationWarning)
-
-            message = str(c[-1].message)
-            self.assertIn("deprecated", message)
-            self.assertIn("checkPassword", message)
-
-
-class CheckPasswordTests(_PasswordTestCase):
+    Tests the default values of scrypt parameters.
     """
-    Tests for ``checkPassword``.
-    """
-    def _checkPassword(self, password):
+    def test_saltLength(self):
         """
-        Checks the provided password against the precomputed key.
+        The default salt length is 256 bits.
         """
-        return w.checkPassword(self.computed, password)
+        self.assertEqual(w.DEFAULT_SALT_LENGTH, 256 // 8)
 
 
-    def test_success(self):
+    def test_maxTime(self):
         """
-        Tests that when the provided password is right, the deferred fires
-        with ``True``.
+        The default maximum computation time is 0.1 seconds.
         """
-        return self._checkPassword("password").addCallback(self.assertTrue)
+        self.assertEqual(w.DEFAULT_MAX_TIME, .1)
 
 
-    def test_failure(self):
+
+class DefaultWrapperTests(unittest.TestCase):
+    def test_methods(self):
         """
-        Tests that when the provided password is wrong, the deferred fires
-        with ``False``.
+        The module-level API functions are methods of the wrapper.
         """
-        return self._checkPassword("BOGUS").addCallback(self.assertFalse)
+        for a in ["computeKey", "checkPassword"]:
+            self.assertIdentical(getattr(w, a), getattr(w._wrapper, a))
 
 
-
-class ComputeKeyTests(unittest.TestCase):
-    """
-    Tests for computing a new key from a password.
-    """
-    def _test_computeKey(self, nonceLength=w.NONCE_LENGTH, maxTime=w.MAX_TIME):
-        with mock.patch("os.urandom") as mu, mock.patch(_deferToThread) as md:
-            w.computeKey("a", nonceLength, maxTime)
-            mu.assert_called_once_with(nonceLength)
-            args = scrypt.encrypt, mu.return_value, "a", maxTime
-            md.assert_called_once_with(*args)
-
-
-    def test_defaults(self):
+    def test_parameters(self):
         """
-        Tests the default values ``computeKey`` gets called with.
+        The module-level wrapper uses the default parameter values.
         """
-        return self._test_computeKey()
+        self.assertIdentical(w._wrapper.saltLength, w.DEFAULT_SALT_LENGTH)
+        self.assertIdentical(w._wrapper.maxTime, w.DEFAULT_MAX_TIME)
 
 
-    def test_differentParameters(self):
+    def test_threadPool(self):
         """
-        Tests that the default values for ``computeKey`` can be overridden.
+        The module level wrapper uses the reactor thread pool.
         """
-        return self._test_computeKey(object(), object())
+        self.assertIdentical(reactor.getThreadPool(), w._wrapper.threadPool)

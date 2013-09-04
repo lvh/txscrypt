@@ -59,3 +59,30 @@ txscrypt takes care of this for you.
 
 (That is, unless there are side channels related to multiple
 executions of ``scrypt`` on the same machine.)
+
+Why is the magical string base64-encoded?
+=========================================
+
+You're not supposed to care about what's in it. But, if you must know:
+because if it weren't, it'd have a bunch of NUL bytes and other gnarly
+non-printable ASCII stuff in it, and that makes a lot of storage stuff
+balk.
+
+Earlier versions of txscrypt used the raw bytes produced by scrypt.
+Some third party tools bit off those strings after the first NUL byte.
+Unluckily, this was immediately after the word "scrypt", which were
+the first bytes of that string.
+
+Changelog
+=========
+
+1.0.0
+-----
+
+**Incompatible change with previous versions!**
+
+- Remove deprecated checkPassword API
+- Use less high-quality entropy for salt bits
+- Use term "salt", consistency with scrypt paper
+- Base64s output, prevents other software choking on NUL bytes
+- Internal rewrite, easier to test

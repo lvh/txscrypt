@@ -1,76 +1,70 @@
 """
 Wrapper around scrypt.
 """
-import os
 import scrypt
-import warnings
 
-from twisted.cred import error
-from twisted.internet import threads
-
-
-NONCE_LENGTH = 64
-MAX_TIME = .1
+from os import urandom
+from twisted.internet import reactor, threads
 
 
-def verifyPassword(stored, provided):
-    """
-    Verifies that the stored derived key was computed from the provided
-    password.
+class Wrapper(object):
+    urandom = staticmethod(urandom)
 
-    Returns a deferred that will either be fired with ``None`` or fail with
-    ``twisted.cred.error.UnauthorizedLogin``.
+    def __init__(self, reactor, threadPool, saltLength, maxTime):
+        self.reactor = reactor
+        self.threadPool = threadPool
+        self.saltLength = saltLength
+        self.maxTime = maxTime
 
-    This function has been deprecated in favor of ``checkPassword``.
-    """
-    warnings.warn("verifyPassword has been deprecated, use checkPassword",
-                  DeprecationWarning, stacklevel=2)
-    d = threads.deferToThread(scrypt.decrypt, stored, provided)
 
-    def _swallowResult(_result):
+    def _deferToThreadPool(self, *args):
         """
-        Swallows the result (the original nonce), returns ``None``.
+        Defers to the thread pool.
         """
-        return None
+        return threads.deferToThreadPool(self.reactor, self.threadPool, *args)
 
-    def _scryptErrback(failure):
+
+    def checkPassword(self, stored, provided):
         """
-        Catches the scrypt error and turns it into a Twisted Cred error.
+        Checks that the stored key was computed from the provided password.
+
+        Returns a deferred that will fire with ``True`` (if the password was
+        correct) or ``False`` otherwise.
         """
-        failure.trap(scrypt.error)
-        raise error.UnauthorizedLogin()
+        decoded = stored.decode("base64")
+        d = self._deferToThread(scrypt.decrypt, decoded, provided)
 
-    return d.addCallbacks(_swallowResult, _scryptErrback)
+        def _swallowResult(_result):
+            """
+            Swallows the result (the original salt) and returns ``True``.
+            """
+            return True
+
+        def _scryptErrback(failure):
+            """
+            Catches scrypt errors and returns ``False``.
+            """
+            failure.trap(scrypt.error)
+            return False
+
+        return d.addCallbacks(_swallowResult, _scryptErrback)
 
 
-def checkPassword(stored, provided):
-    """
-    Checks that the stored key was computed from the provided password.
-
-    Returns a deferred that will fire with ``True`` (if the password was
-    correct) or ``False`` otherwise.
-    """
-    d = threads.deferToThread(scrypt.decrypt, stored, provided)
-
-    def _swallowResult(_result):
+    def computeKey(self, password):
         """
-        Swallows the result (the original nonce), returns ``True``.
+        Computes a key from the password using a secure key derivation function.
         """
-        return True
-
-    def _scryptErrback(failure):
-        """
-        Catches scrypt errors and returns ``False``.
-        """
-        failure.trap(scrypt.error)
-        return False
-
-    return d.addCallbacks(_swallowResult, _scryptErrback)
+        salt = self.urandom(self.saltLength)
+        d = self._deferToThread(scrypt.encrypt, salt, password, self.maxTime)
+        return d.addCallback(lambda s: s.encode("base64").strip())
 
 
-def computeKey(password, nonceLength=NONCE_LENGTH, maxTime=MAX_TIME):
-    """
-    Computes a key from the password using a secure key derivation function.
-    """
-    nonce = os.urandom(nonceLength)
-    return threads.deferToThread(scrypt.encrypt, nonce, password, maxTime)
+
+DEFAULT_SALT_LENGTH = 256 // 8
+DEFAULT_MAX_TIME = .1
+
+
+_wrapper = Wrapper(reactor, reactor.getThreadPool(),
+    DEFAULT_SALT_LENGTH, DEFAULT_MAX_TIME)
+computeKey  = _wrapper.computeKey
+checkPassword = _wrapper.checkPassword
