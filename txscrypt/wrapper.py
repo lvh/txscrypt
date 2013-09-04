@@ -5,6 +5,7 @@ import scrypt
 
 from os import urandom
 from twisted.internet import reactor, threads
+from twisted.python import threadpool
 
 
 class Wrapper(object):
@@ -17,11 +18,11 @@ class Wrapper(object):
         self.maxTime = maxTime
 
 
-    def _deferToThreadPool(self, *args):
+    def _deferToThread(self, f, *a):
         """
         Defers to the thread pool.
         """
-        return threads.deferToThreadPool(self.reactor, self.threadPool, *args)
+        return threads.deferToThreadPool(self.reactor, self.threadPool, f, *a)
 
 
     def checkPassword(self, stored, provided):
@@ -63,8 +64,12 @@ class Wrapper(object):
 DEFAULT_SALT_LENGTH = 256 // 8
 DEFAULT_MAX_TIME = .1
 
-
-_wrapper = Wrapper(reactor, reactor.getThreadPool(),
-    DEFAULT_SALT_LENGTH, DEFAULT_MAX_TIME)
+_pool = threadpool.ThreadPool()
+_wrapper = Wrapper(reactor, _pool, DEFAULT_SALT_LENGTH, DEFAULT_MAX_TIME)
 computeKey  = _wrapper.computeKey
 checkPassword = _wrapper.checkPassword
+
+# Keep a reference to the reactor thread pool so I can unit test that
+# the module-level instance isn't using it, despite t.trial
+# shennanigans.
+_reactorPool = reactor.getThreadPool()

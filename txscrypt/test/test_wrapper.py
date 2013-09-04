@@ -6,6 +6,7 @@ from twisted.internet import reactor
 from twisted.trial import unittest
 from txscrypt import wrapper as w
 
+
 class WrapperTests(unittest.TestCase):
     def setUp(self):
         self.reactor = object()
@@ -73,7 +74,7 @@ class WrapperTests(unittest.TestCase):
         False.
         """
         self.threadPool.success = False
-        self.threadPool.result = scrypt.error()
+        self.threadPool.result = scrypt.error(0)
 
         stored = "STORED_PASSWORD".encode("base64").strip()
         d = self.wrapper.checkPassword(stored, "FAKE_PASSWORD")
@@ -101,7 +102,7 @@ class _FakeThreadPool(object):
 
     def callInThreadWithCallback(self, onResult, f, *args, **kwargs):
         self.f, self.args, self.kwargs = f, args, kwargs
-        onResult((self.success, self.result))
+        onResult(self.success, self.result)
 
 
 
@@ -130,7 +131,9 @@ class DefaultWrapperTests(unittest.TestCase):
         The module-level API functions are methods of the wrapper.
         """
         for a in ["computeKey", "checkPassword"]:
-            self.assertIdentical(getattr(w, a), getattr(w._wrapper, a))
+            moduleLevel = getattr(w, a).im_func
+            instanceLevel = getattr(w._wrapper, a).im_func
+            self.assertIdentical(moduleLevel, instanceLevel)
 
 
     def test_parameters(self):
@@ -143,6 +146,9 @@ class DefaultWrapperTests(unittest.TestCase):
 
     def test_threadPool(self):
         """
-        The module level wrapper uses the reactor thread pool.
+        The module level wrapper does not use the reactor thread pool.
+
+        This test can not call reactor.getThreadPool() because trial
+        makes sure there's a new thread pool between tests.
         """
-        self.assertIdentical(reactor.getThreadPool(), w._wrapper.threadPool)
+        self.assertNotIdentical(w._reactorPool, w._wrapper.threadPool)
