@@ -73,15 +73,25 @@ But what about timing attacks?
 
 txscrypt takes care of this for you.
 
-(That is, unless there are side channels related to multiple
-executions of ``scrypt`` on the same machine.)
+(It relies on scrypt to get this right. There might be side channels
+related to multiple executions of ``scrypt`` on the same machine.)
 
 But what about starving the thread pool?
 ========================================
 
 txscrypt takes care of this for you.
 
-(It creates a new thread pool just for running scrypt in.)
+(It creates a new thread pool just for running scrypt in. This means
+that scrypt doesn't compete against, say, DNS resolution, or things
+you pass to ``deferToThread``.)
+
+But what about shutting down the thread pool?
+=============================================
+
+txscrypt takes care of this for you.
+
+(It tells the reactor to stop the thread pool at the start of its own
+shutdown procedure.)
 
 When should I create my own Wrapper object?
 ===========================================
@@ -96,6 +106,12 @@ So, basically, never.
 
 Changelog
 =========
+
+1.1.0
+-----
+
+- Only start the thread pool on first use
+- Stop the thread pool when the reactor starts shutting down
 
 1.0.0
 -----
