@@ -65,6 +65,7 @@ DEFAULT_SALT_LENGTH = 256 // 8
 DEFAULT_MAX_TIME = .1
 
 _pool = threadpool.ThreadPool()
+_pool.start()
 _wrapper = Wrapper(reactor, _pool, DEFAULT_SALT_LENGTH, DEFAULT_MAX_TIME)
 computeKey  = _wrapper.computeKey
 checkPassword = _wrapper.checkPassword

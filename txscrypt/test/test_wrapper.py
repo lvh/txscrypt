@@ -158,7 +158,7 @@ class DefaultWrapperTests(unittest.TestCase):
         self.assertIdentical(w._wrapper.maxTime, w.DEFAULT_MAX_TIME)
 
 
-    def test_threadPool(self):
+    def test_separateThreadPool(self):
         """
         The module level wrapper does not use the reactor thread pool.
 
@@ -166,3 +166,10 @@ class DefaultWrapperTests(unittest.TestCase):
         makes sure there's a new thread pool between tests.
         """
         self.assertNotIdentical(w._reactorPool, w._wrapper.threadPool)
+
+
+    def test_threadPoolStarted(self):
+        """
+        The module level wrapper uses a thread pool that has been started.
+        """
+        self.assertTrue(w._wrapper.threadPool.started)
