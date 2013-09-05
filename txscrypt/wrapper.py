@@ -21,7 +21,15 @@ class Wrapper(object):
     def _deferToThread(self, f, *a):
         """
         Defers to the thread pool.
+
+        If the thread pool has not been started yet, starts the thread
+        pool and schedules it to be stopped before the reactor stops.
         """
+        if not self.threadPool.started:
+            self.threadPool.start()
+            self.reactor.addSystemEventTrigger(
+                "before", "shutdown", self.threadPool.stop)
+
         return threads.deferToThreadPool(self.reactor, self.threadPool, f, *a)
 
 
@@ -65,7 +73,6 @@ DEFAULT_SALT_LENGTH = 256 // 8
 DEFAULT_MAX_TIME = .1
 
 _pool = threadpool.ThreadPool()
-_pool.start()
 _wrapper = Wrapper(reactor, _pool, DEFAULT_SALT_LENGTH, DEFAULT_MAX_TIME)
 computeKey  = _wrapper.computeKey
 checkPassword = _wrapper.checkPassword

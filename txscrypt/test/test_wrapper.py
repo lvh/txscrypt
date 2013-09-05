@@ -21,6 +21,28 @@ class WrapperTests(unittest.TestCase):
         return "RANDOM_BYTES" # YOLO
 
 
+    def test_threadPoolInitiallyNotStarted(self):
+        """
+        The thread pool starts out not started.
+        """
+        self.assertFalse(self.threadPool.started)
+
+
+    def assertThreadPoolStartedAndStopScheduled(self):
+        """
+        Asserts that the thread pool has been started, and that there is
+        exactly one scheduled system event, to stop the thread pool
+        before reactor shutdown.
+        """
+        self.assertEqual(len(self.reactor.eventTriggers), 1)
+        phase, eventType, f, args, kwargs = self.reactor.eventTriggers[0]
+        self.assertEqual(phase, "before")
+        self.assertEqual(eventType, "shutdown")
+        self.assertEqual(f.im_func, self.threadPool.stop.im_func)
+        self.assertEqual(args, ())
+        self.assertEqual(kwargs, {})
+
+
     def test_parameters(self):
         """
         The wrapper has the parameters it was given as attributes.
@@ -33,7 +55,8 @@ class WrapperTests(unittest.TestCase):
 
     def test_computeKey(self):
         """
-        Computing a key works. The result is base64 encoded.
+        Computing a key returns a deferred that fires with the base64
+        encoded derived key. The thread pool is started as necessary.
         """
         self.threadPool.success = True
         self.threadPool.result = "STORED_PASSWORD"
@@ -48,14 +71,25 @@ class WrapperTests(unittest.TestCase):
         expectedArgs = "RANDOM_BYTES", "THE_PASSWORD", self.wrapper.maxTime
         self.assertEqual(self.threadPool.args, expectedArgs)
         self.assertEqual(self.threadPool.kwargs, {})
+        self.assertTrue(self.threadPool.started)
+
+        self.assertThreadPoolStartedAndStopScheduled()
 
         self.assertEqual(self.randomBytesRequested, self.wrapper.saltLength)
 
 
+    def test_computeKeyMultipleTimes(self):
+        """
+        When computing keys multiple times, the thread pool is started once.
+        """
+        self.test_computeKey()
+        self.test_computeKey()
+
+
     def test_checkValidPassword(self):
         """
-        Checking a valid password provides a deferred that fires with
-        True.
+        Checking a valid password returns a deferred that fires with True.
+        The thread pool is started as necessary.
         """
         self.threadPool.success = True
         self.threadPool.result = "THE_SALT"
@@ -69,11 +103,13 @@ class WrapperTests(unittest.TestCase):
         self.assertEqual(self.threadPool.args, expectedArgs)
         self.assertEqual(self.threadPool.kwargs, {})
 
+        self.assertThreadPoolStartedAndStopScheduled()
+
 
     def test_checkInvalidPassword(self):
         """
         Checking an invalid password provides a deferred that fires with
-        False.
+        False. The thread pool is started as necessary.
         """
         self.threadPool.success = False
         self.threadPool.result = scrypt.error(0)
@@ -87,6 +123,17 @@ class WrapperTests(unittest.TestCase):
         self.assertEqual(self.threadPool.args, expectedArgs)
         self.assertEqual(self.threadPool.kwargs, {})
 
+        self.assertThreadPoolStartedAndStopScheduled()
+
+
+    def test_checkPasswordMultipleTimes(self):
+        """
+        When checking passwords multiple times, the thread pool is started
+        once.
+        """
+        self.test_checkValidPassword()
+        self.test_checkValidPassword()
+
 
 
 class _FakeThreadPool(object):
@@ -98,8 +145,23 @@ class _FakeThreadPool(object):
 
     """
     def __init__(self):
+        self.started = False
         self.success = True
         self.result = None
+
+
+    def start(self):
+        """
+        Sets the started attribute to True.
+        """
+        self.started = True
+
+
+    def stop(self):
+        """
+        Sets the started attribute to True.
+        """
+        self.started = False
 
 
     def callInThreadWithCallback(self, onResult, f, *args, **kwargs):
@@ -112,11 +174,23 @@ class _FakeReactor(object):
     """
     A fake reactor that pretends to be able to be called from a thread.
     """
+    def __init__(self):
+        self.eventTriggers = []
+
+
     def callFromThread(self, f, *a, **kw):
         """
         Just call the function in this thread.
         """
         f(*a, **kw)
+
+
+    def addSystemEventTrigger(self, phase, eventType, callable, *args, **kw):
+        """
+        Stores the event trigger.
+        """
+        trigger = phase, eventType, callable, args, kw
+        self.eventTriggers.append(trigger)
 
 
 
@@ -166,10 +240,3 @@ class DefaultWrapperTests(unittest.TestCase):
         makes sure there's a new thread pool between tests.
         """
         self.assertNotIdentical(w._reactorPool, w._wrapper.threadPool)
-
-
-    def test_threadPoolStarted(self):
-        """
-        The module level wrapper uses a thread pool that has been started.
-        """
-        self.assertTrue(w._wrapper.threadPool.started)
