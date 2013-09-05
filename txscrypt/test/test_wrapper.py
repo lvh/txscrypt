@@ -21,10 +21,16 @@ class WrapperTests(unittest.TestCase):
         return "RANDOM_BYTES" # YOLO
 
 
-    def test_threadPoolInitiallyNotStarted(self):
+    def test_startAndStopThreadPool(self):
         """
-        The thread pool starts out not started.
+        The thread pool starts stopped, and can be started and stopped again.
         """
+        self.assertFalse(self.threadPool.started)
+
+        self.threadPool.start()
+        self.assertTrue(self.threadPool.started)
+
+        self.threadPool.stop()
         self.assertFalse(self.threadPool.started)
 
 
