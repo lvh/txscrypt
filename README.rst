@@ -31,13 +31,13 @@ bytes. If your user is giving you a password in Unicode, encode it
 first. You get a deferred that will fire, at some point, with a
 magical string of bytes. Store it.
 
-Okay. How do I verify a password?
-=================================
+Okay. How do I check a password?
+================================
 
 .. code:: python
 
-    from txscrypt import verifyPassword
-    d = verifyPassword(stored, provided)
+    from txscrypt import checkPassword
+    d = checkPassword(stored, provided)
 
 In this snippet, ``stored`` is the thing you got from ``computeKey``.
 ``provided`` is the password as provided by the user. Give it the same
@@ -107,6 +107,14 @@ So, basically, never.
 Changelog
 =========
 
+1.1.1
+-----
+
+- Remove stale references to verifyPassword in documentation and
+  __all__
+
+Thanks Matt Haggard for the bug report!
+
 1.1.0
 -----
 
@@ -118,7 +126,7 @@ Changelog
 
 **Incompatible change with previous versions!**
 
-- Remove deprecated checkPassword API
+- Remove deprecated verifyPassword API
 - Use less high-quality entropy for salt bits
 - Use term "salt", consistency with scrypt paper
 - Base64s output, prevents other software choking on NUL bytes
