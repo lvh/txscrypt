@@ -1,2 +1,6 @@
 coverage
 mock
+
+# Debugging
+pudb
+ipython

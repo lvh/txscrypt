@@ -1,79 +1,79 @@
 """
 Wrapper around scrypt.
 """
-import scrypt
-
 from os import urandom
-from twisted.internet import reactor, threads
+from scrypt import hash
+from twisted.internet import reactor
+from twisted.internet.threads import deferToThreadPool
 from twisted.python import threadpool
 
 
 class Wrapper(object):
     urandom = staticmethod(urandom)
 
-    def __init__(self, reactor, threadPool, saltLength, maxTime):
+    def __init__(self, reactor, threadPool, saltLength, **kwargs):
         self.reactor = reactor
         self.threadPool = threadPool
         self.saltLength = saltLength
-        self.maxTime = maxTime
+        self.kwargs = kwargs
 
 
-    def _deferToThread(self, f, *a):
-        """
-        Defers to the thread pool.
+    def _deferToThread(self, f, *a, **kw):
+        """Defers to the thread pool.
 
         If the thread pool has not been started yet, starts the thread
         pool and schedules it to be stopped before the reactor stops.
+
         """
         if not self.threadPool.started:
             self.threadPool.start()
             self.reactor.addSystemEventTrigger(
                 "before", "shutdown", self.threadPool.stop)
 
-        return threads.deferToThreadPool(self.reactor, self.threadPool, f, *a)
+        return deferToThreadPool(self.reactor, self.threadPool, f, *a, **kw)
+
+
+    def _hash(self, password):
+        """Computes the hash of the given password, with the wrapper's
+        parameters.
+
+        """
+        salt = self.urandom(self.saltLength)
+        return self._deferToThread(hash, password, salt, **self.kwargs)
 
 
     def checkPassword(self, stored, provided):
+        """Checks that the stored key was computed from the provided password.
+
+        Returns a deferred that will fire with ``True``, if the
+        password was correct, or ``False`` otherwise.
+
         """
-        Checks that the stored key was computed from the provided password.
-
-        Returns a deferred that will fire with ``True`` (if the password was
-        correct) or ``False`` otherwise.
-        """
-        decoded = stored.decode("base64")
-        d = self._deferToThread(scrypt.decrypt, decoded, provided)
-
-        def _swallowResult(_result):
-            """
-            Swallows the result (the original salt) and returns ``True``.
-            """
-            return True
-
-        def _scryptErrback(failure):
-            """
-            Catches scrypt errors and returns ``False``.
-            """
-            failure.trap(scrypt.error)
-            return False
-
-        return d.addCallbacks(_swallowResult, _scryptErrback)
+        d = self._hash(provided)
+        return d.addCallback(stored.decode("base64").__eq__)
 
 
     def computeKey(self, password):
+        """Computes a key from the password using a secure key derivation
+        function.
+
         """
-        Computes a key from the password using a secure key derivation function.
+        return self._hash(password).addCallback(self._encode)
+
+
+    def _encode(self, computedKey):
         """
-        salt = self.urandom(self.saltLength)
-        d = self._deferToThread(scrypt.encrypt, salt, password, self.maxTime)
-        return d.addCallback(lambda s: s.encode("base64").strip())
+        Base64-encodes the key.
+        """
+        return computedKey.encode("base64").strip()
 
 
 
 DEFAULT_SALT_LENGTH = 256 // 8
-DEFAULT_MAX_TIME = .1
+DEFAULT_ITERATIONS = 2 ** 15
 
 _pool = threadpool.ThreadPool()
-_wrapper = Wrapper(reactor, _pool, DEFAULT_SALT_LENGTH, DEFAULT_MAX_TIME)
+_wrapper = Wrapper(reactor, _pool, DEFAULT_SALT_LENGTH, N=DEFAULT_ITERATIONS)
 computeKey  = _wrapper.computeKey
 checkPassword = _wrapper.checkPassword
 

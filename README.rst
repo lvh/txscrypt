@@ -107,6 +107,15 @@ So, basically, never.
 Changelog
 =========
 
+2.0.0
+-----
+
+**Incompatible change with previous versions!**
+
+- Now uses the newly exposed ``hash`` function, making key derivation
+  fully deterministic.
+- The ``maxTime`` argument has been removed.
+
 1.1.1
 -----
 
