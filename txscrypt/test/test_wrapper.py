@@ -1,6 +1,7 @@
 """
 Tests for the scrypt wrapper.
 """
+from json import dumps, loads
 from scrypt import hash
 from twisted.trial import unittest
 from txscrypt import wrapper as w
@@ -16,12 +17,19 @@ class WrapperTests(unittest.TestCase):
         self.saltLength, self.iterations = 3141, 5926
         self.wrapper = w.Wrapper(self.reactor, self.threadPool,
                                  self.saltLength, N=self.iterations)
+
+        self.randomBytesRequested = None
         self.wrapper.urandom = self._urandom
+
+        self.storedParams = {"N": 1234, "r": 10, "p": 10}
+        key, salt = [s.encode("base64").strip() for s in ["KEY", "SALT"]]
+        params = dumps(self.storedParams)
+        self.stored = "txscrypt${0}${1}${2}".format(params, key, salt)
 
 
     def _urandom(self, n):
         self.randomBytesRequested = n
-        return "RANDOM_BYTES" # YOLO
+        return "SALT" # YOLO
 
 
     def test_startAndStopThreadPool(self):
@@ -53,43 +61,71 @@ class WrapperTests(unittest.TestCase):
 
 
     def test_parameters(self):
-        """
-        The wrapper has the parameters it was given as attributes.
+        """The wrapper has the parameters it was given as attributes.
+
         """
         self.assertEqual(self.wrapper.reactor, self.reactor)
         self.assertEqual(self.wrapper.threadPool, self.threadPool)
         self.assertEqual(self.wrapper.saltLength, self.saltLength)
-        self.assertEqual(self.wrapper.kwargs, {"N": self.iterations})
+        self.assertEqual(self.wrapper._params, {"N": self.iterations})
 
 
-    def assertHashCalled(self, password):
+    def assertFailsWithValueError(self, storedValue, substring):
+        """Asserts that one of the early sanity checks on the structure of the
+        provided stored value fail with ValueError, and that the given
+        substring is in the error message.
+
+        """
+        d = self.wrapper.checkPassword(storedValue, "")
+        failure = self.failureResultOf(d, ValueError)
+        self.assertIn(substring, failure.value.message)
+
+
+    def test_raisesOnIncorrectNumberOfFields(self):
+        """When the number of fields is incorrect, the returned deferred
+        fails with ValueError.
+
+        """
+        self.assertFailsWithValueError("$", "fields")
+        self.assertFailsWithValueError("$$", "fields")
+        self.assertFailsWithValueError("$$$$", "fields")
+
+
+    def test_raisesOnBadComment(self):
+        """When the comment is incorrect, the returned deferred fails with
+        ValueError.
+
+        """
+        self.assertFailsWithValueError("BOGUS$$$", "prefix")
+
+
+    def assertHashCalled(self, password, salt, expectedParams):
         """The scrypt hash function is deferred to a thread with the
         appropriate arguments.
 
         """
         self.assertEqual(self.threadPool.f, hash)
-        self.assertEqual(self.threadPool.args, (password, "RANDOM_BYTES"))
-        self.assertEqual(self.threadPool.kwargs, {"N": self.iterations})
+        self.assertEqual(self.threadPool.args, (password, salt))
+        self.assertEqual(self.threadPool.kwargs, expectedParams)
         self.assertTrue(self.threadPool.started)
 
 
     def test_computeKey(self):
-        """
-        Computing a key returns a deferred that fires with the base64
+        """Computing a key returns a deferred that fires with the base64
         encoded derived key. The thread pool is started as necessary.
+        The default parameters are passed to the hash function.
+
         """
-        self.threadPool.result = "STORED_PASSWORD"
+        self.threadPool.result = "KEY"
 
         d = self.wrapper.computeKey("THE_PASSWORD")
         result = self.successResultOf(d)
 
-        expected = "STORED_PASSWORD".encode("base64").strip()
-        self.assertEqual(result, expected)
+        self.assertEqual(result, 'txscrypt${"N": 5926}$S0VZ$U0FMVA==')
 
-        self.assertHashCalled("THE_PASSWORD")
-        self.assertThreadPoolStartedAndStopScheduled()
-
+        self.assertHashCalled("THE_PASSWORD", "SALT", self.wrapper._params)
         self.assertEqual(self.randomBytesRequested, self.wrapper.saltLength)
+        self.assertThreadPoolStartedAndStopScheduled()
 
 
     def test_computeKeyMultipleTimes(self):
@@ -101,32 +137,34 @@ class WrapperTests(unittest.TestCase):
 
 
     def test_checkValidPassword(self):
-        """
-        Checking a valid password returns a deferred that fires with True.
-        The thread pool is started as necessary.
-        """
-        self.threadPool.result = "STORED_PASSWORD"
+        """Checking a valid password returns a deferred that fires with True.
+        The thread pool is started as necessary. The parameters
+        encoded in the stored value are passed to the hash function.
 
-        stored = "STORED_PASSWORD".encode("base64").strip()
-        d = self.wrapper.checkPassword(stored, "REAL_PASSWORD")
+        """
+        self.threadPool.result = "KEY"
+
+        d = self.wrapper.checkPassword(self.stored, "THE_PASSWORD")
         self.assertTrue(self.successResultOf(d))
 
-        self.assertHashCalled("REAL_PASSWORD")
+        self.assertHashCalled("THE_PASSWORD", "SALT", self.storedParams)
+        self.assertEqual(self.randomBytesRequested, None)
         self.assertThreadPoolStartedAndStopScheduled()
 
 
     def test_checkInvalidPassword(self):
         """
         Checking an invalid password provides a deferred that fires with
-        False. The thread pool is started as necessary.
+        False. The thread pool is started as necessary. The parameters
+        encoded in the stored value are passed to the hash function.
         """
-        self.threadPool.result = "DERIVE_FROM_THE_FAKE_PASSWORD"
+        self.threadPool.result = "DIFFERENT_KEY"
 
-        stored = "STORED_PASSWORD".encode("base64").strip()
-        d = self.wrapper.checkPassword(stored, "FAKE_PASSWORD")
+        d = self.wrapper.checkPassword(self.stored, "FAKE_PASSWORD")
         self.assertFalse(self.successResultOf(d))
 
-        self.assertHashCalled("FAKE_PASSWORD")
+        self.assertHashCalled("FAKE_PASSWORD", "SALT", self.storedParams)
+        self.assertEqual(self.randomBytesRequested, None)
         self.assertThreadPoolStartedAndStopScheduled()
 
 
@@ -233,7 +271,7 @@ class DefaultWrapperTests(unittest.TestCase):
         The module-level wrapper uses the default parameter values.
         """
         self.assertIdentical(w._wrapper.saltLength, w.DEFAULT_SALT_LENGTH)
-        self.assertEqual(w._wrapper.kwargs, {"N": w.DEFAULT_ITERATIONS})
+        self.assertEqual(w._wrapper._params, {"N": w.DEFAULT_ITERATIONS})
 
 
     def test_separateThreadPool(self):

@@ -50,10 +50,21 @@ either ``True`` if the password matched or ``False`` if it didn't.
 Why is the magical string base64-encoded?
 =========================================
 
-You're not supposed to care about what's in it. But, if you must know:
-because if it weren't, it'd have a bunch of NUL bytes and other gnarly
-non-printable ASCII stuff in it, and that makes a lot of storage stuff
-balk.
+You're not supposed to care about what's in it.
+
+It's not entirely base64 encoded, but it does contain some base64
+encoded parts. If it weren't, it'd have a bunch of NUL bytes and other
+gnarly stuff (i.e. not printable ASCII) in it, and that makes a lot of
+storage stuff balk.
+
+If you must know, it looks like this::
+
+  COMMENT:PARAMS:ENCODED_KEY:ENCODED_SALT
+
+Where ``COMMENT`` is currently always ``txscrypt``, ``PARAMS`` is a
+JSON object containing the parameters used to invoke the scrypt hash
+function (N, r, p, buflen), ``ENCODED_KEY`` is the base64 encoded key,
+``ENCODED_SALT`` is the base64 encoded salt.
 
 Earlier versions of txscrypt used the raw bytes produced by scrypt.
 Some third party tools bit off those strings after the first NUL byte.
@@ -66,15 +77,18 @@ But what about salts?
 txscrypt takes care of this for you.
 
 (It computes a salt of sufficient length using your OS'
-cryptographically secure random number generator.)
+cryptographically secure random number generator. Currently, that
+length is 256 bits.)
 
 But what about timing attacks?
 ==============================
 
 txscrypt takes care of this for you.
 
-(It relies on scrypt to get this right. There might be side channels
-related to multiple executions of ``scrypt`` on the same machine.)
+(It relies on salts being of sufficient length. There might be side
+channels related to multiple executions of ``scrypt`` on the same
+machine; but to the author's knowledge this has never been
+demonstrated as an attack.)
 
 But what about starving the thread pool?
 ========================================
@@ -91,21 +105,37 @@ But what about shutting down the thread pool?
 txscrypt takes care of this for you.
 
 (It tells the reactor to stop the thread pool at the start of its own
-shutdown procedure.)
+shutdown procedure. That does mean that you have to have the reactor
+running for any computations to work.)
 
 When should I create my own Wrapper object?
 ===========================================
 
 If you want to change:
 
-- the maximum computation time
 - the salt length
 - the thread pool
+- any of the default scrypt hash parameters (N, r, p, buflen)
 
-So, basically, never.
+So, basically, never. If the number of iterations is insecure, file a
+bug with txscrypt, so it can be amended.
 
 Changelog
 =========
+
+3.0.0
+-----
+
+**Incompatible change with previous versions!**
+
+The internal format now stores the parameters, so that changing them
+(e.g. upgrading the number of iterations) will result in a smooth
+forward transition.
+
+2.0.1
+-----
+
+README updates and test suite updates.
 
 2.0.0
 -----
