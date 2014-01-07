@@ -59,7 +59,7 @@ storage stuff balk.
 
 If you must know, it looks like this::
 
-  COMMENT:PARAMS:ENCODED_KEY:ENCODED_SALT
+  COMMENT$PARAMS$ENCODED_KEY$ENCODED_SALT
 
 Where ``COMMENT`` is currently always ``txscrypt``, ``PARAMS`` is a
 JSON object containing the parameters used to invoke the scrypt hash
